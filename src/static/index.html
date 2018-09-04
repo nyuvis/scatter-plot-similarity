@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>choose plots</title>
+  <meta charset="utf-8">
+  <link rel="shortcut icon" type="image/x-icon" href="favicon.ico">
+  <link rel="stylesheet" type="text/css" href="lib/jk-js/lib/bootstrap/css/bootstrap.min.css">
+  <script src="lib/jk-js/lib/jquery/jquery.min.js" charset="utf-8"></script>
+  <script src="lib/jk-js/lib/bootstrap/js/bootstrap.min.js" charset="utf-8"></script>
+  <script src="lib/jk-js/lib/d3/d3.min.js" charset="utf-8"></script>
+  <script src="lib/jk-js/jkjs/lasso.js" charset="utf-8"></script>
+  <script src="lib/jk-js/jkjs/path.js" charset="utf-8"></script>
+  <script src="lib/jk-js/jkjs/util.js" charset="utf-8"></script>
+  <script src="lib/easyDnD/dnd.js" charset="utf-8"></script>
+  <style>
+    .main_content {
+      width: 90vw;
+      height: 90vh;
+      margin: 5px auto;
+    }
+
+    .lasso_cursor * {
+      cursor: crosshair;
+    }
+
+    .bottom_content {
+      margin: 5px 0 0 0;
+      display: flex;
+      justify-content: center;
+    }
+
+    .plot_cursor, .grab_handle {
+      cursor: -moz-grab;
+      cursor: -webkit-grab;
+      cursor: grab;
+    }
+
+    .ghost_cursor {
+      cursor: -moz-grabbing !important;
+      cursor: -webkit-grabbing !important;
+      cursor: grabbing !important;
+    }
+
+    .rect_selected {
+      stroke: blue !important;
+    }
+
+    .rect_active {
+      stroke: red;
+    }
+
+    .rect_tagged {
+      stroke: red;
+      stroke-width: 2px;
+    }
+  </style>
+</head>
+<body onload="start()">
+  <div class="main_content">
+    <svg id="content"></svg>
+  </div>
+  <div class="bottom_content">
+    <button type="button" id="done" class="btn btn-default btn-xs">Freeze!</button>
+    <span id="status"><span>
+  </div>
+<script>
+var grid = 3;
+var margin = 5;
+var grabHandle = 20;
+var boxMargin = 1;
+var boxBorder = 0.5;
+var boxColor = "gray";
+var groupBorder = 1;
+var groupColor = "black";
+
+function setStatus(msg) {
+  d3.select("#status").text("\xa0" + msg);
+}
+
+var plotCount = 0;
+var scroll = 0;
+function start() {
+  var args = jkjs.util.getQueryStrings();
+  var uid = "uid" in args ? +args["uid"] : 0;
+  var size = "size" in args ? +args["size"] : 50;
+  var debug = args["debug"];
+
+  var content = d3.select("#content");
+  if(!uid) {
+    d3.select("#done").on("click", function() {
+      d3.json('/api/get_uid', function(err_out, data) {
+        if(err_out) {
+          console.warn(err_out);
+          return;
+        }
+        location.search = 'uid=' + (+data['uid']) + '&size=' + size;
+      });
+    }).text("Start!");
+    content.remove();
+    d3.select("#status").remove();
+    return;
+  }
+
+  content.style({
+    "width": "100%",
+    "height": "100%"
+  });
+  content.append("rect").attr({
+    "width": "100%",
+    "height": "100%",
+    "fill": "white"
+  });
+  var topList = content.append("g");
+  var topBorder = topList.append("rect").attr({
+    "stroke": groupColor,
+    "stroke-width": groupBorder * 0.25,
+    "fill": "none"
+  });
+
+  var isGrabbing = false;
+  function dragHandle() {
+    if(d3.event.type !== "drag") {
+      isGrabbing = false;
+      topGrabHandle.classed("ghost_cursor", false);
+      return;
+    }
+    scroll -= d3.event.dx;
+    if(scroll < 0) {
+      scroll = 0;
+    }
+    updateList();
+  }
+
+  var topGrabHandle = topList.append("rect").classed("grab_handle", true).attr({
+    "width": "100%",
+    "height": grabHandle,
+    "fill": "silver"
+  }).call(d3.behavior.drag().on("dragstart.handle", function() {
+    isGrabbing = true;
+    topGrabHandle.classed("ghost_cursor", true);
+  }).on("drag.handle", dragHandle).on("dragend.handle", dragHandle));
+  var bottom = content.append("g");
+  bottom.append("rect").attr({
+    "width": "100%",
+    "height": "100%",
+    "fill": "none",
+    "stroke": groupColor,
+    "stroke-width": groupBorder
+  });
+
+  function Plot(id, file) {
+    var that = this;
+    this.id = function() {
+      return id;
+    };
+    this.file = function() {
+      return file;
+    };
+
+    function createGeometry(sel) {
+      sel.append("rect").attr({
+        "stroke": boxColor,
+        "stroke-width": boxBorder,
+        "fill": "white",
+        "x": 0,
+        "y": 0,
+        "width": size,
+        "height": size
+      }).classed("plot_cursor", true);
+      sel.append("image").attr({
+        "xlink:href": file,
+        "x": boxMargin + boxBorder,
+        "y": boxMargin + boxBorder,
+        "width": size - 2 * (boxMargin + boxBorder),
+        "height": size - 2 * (boxMargin + boxBorder)
+      }).classed("plot_cursor", true).on("click", function() {
+        that.toggleTag();
+      });
+    }
+
+    var pos = [0, 0];
+    var sel = null;
+    var parent = null;
+    this.select = function(svg) {
+      if(svg !== parent) {
+        if(sel) {
+          sel.remove();
+        }
+        sel = null;
+      }
+      if(!sel) {
+        sel = svg.append("g").datum(that).classed({
+          "plot": true,
+          "plot_cursor": true
+        });
+        that.pos(pos);
+        createGeometry(sel);
+        parent = svg;
+        plot_template.apply(sel);
+      }
+      jkjs.util.toFront(sel, true);
+      return sel;
+    };
+    this.pos = function(_) {
+      if(!arguments.length) return pos;
+      pos = _;
+      sel && sel.attr({
+        "transform": "translate(" + pos[0] + " " + pos[1] + ")"
+      });
+    };
+    this.makeSelected = function() {
+      if(!sel) return;
+      sel.select("rect").classed("rect_selected", true);
+    };
+    this.makeInactive = function() {
+      if(!sel) return;
+      sel.select("rect").classed("rect_active", false);
+    };
+    this.toggleTag = function() {
+      if(!sel) return;
+      var r = sel.select("rect");
+      r.classed("rect_tagged", !r.classed("rect_tagged"));
+    }
+  } // Plot
+
+  function init(plots) {
+    var post = JSON.stringify({
+      'images': plots,
+      'method': "random"
+    });
+    d3.json("/api/order/").header("Content-Type", "application/json").post(post, function(err, data) {
+      if(err) {
+        console.warn(err);
+        return;
+      }
+      initDnD();
+      data['order'].forEach(function(ix) {
+        var k = plots[ix];
+        var p = new Plot(k, '/api/images/'+k);
+        p.select(topList);
+      });
+      updateList();
+    });
+  }
+
+  function updateList() {
+    var count = 0;
+    var items;
+    var x;
+    do {
+      items = 0;
+      x = margin - scroll;
+      var y = margin + grabHandle;
+      topList.selectAll(".plot").each(function(p) {
+        p.pos([ x, y ]);
+        x += size + margin;
+        items += 1;
+      });
+      var threshold = size;
+      if(x < threshold) {
+        scroll += x - threshold;
+      }
+      count += 1;
+      if(count > 2) {
+        console.warn("wrong!");
+        x = 0;
+      }
+    } while(x < 0);
+    topBorder.attr({
+      "width": items ? x : 0,
+      "height": grabHandle + size + 2 * margin
+    });
+    d3.select("#done").attr({
+      "disabled": !topList.selectAll(".plot").empty() ? "disabled" : null
+    });
+    setStatus("Please drag all plots into the canvas and position them: " + items + " / " + plotCount);
+  }
+
+  var plot_template = null;
+  function initDnD() {
+    // setting up dnd
+    function updateRect(elem, obj) {
+      elem.attr({
+        "opacity": 1,
+        "xlink:href": obj.file,
+        "x": obj.pos[0] + boxMargin + boxBorder,
+        "y": obj.pos[1] + boxMargin + boxBorder,
+        "width": size - 2 * (boxMargin + boxBorder),
+        "height": size - 2 * (boxMargin + boxBorder)
+      });
+    }
+
+    var dnd = new DnD();
+    var gi_plot = new dnd.GhostItem(bottom, function(sel, gi) { // create
+      return sel.append("image").classed("ghost", true).attr({
+        "opacity": 0
+      });
+    }, function(gi, _, p) { // show
+      if(state !== "drag") return;
+      gi.pos = p.pos();
+      gi.id = p.id();
+      gi.file = p.file();
+      gi.elem.datum(gi);
+      gi.elem.classed("ghost_cursor", true);
+      updateRect(gi.elem, gi);
+      jkjs.util.toFront(gi.elem, false);
+    }, function(gi, dx, dy) { // move
+      if(state !== "drag") return;
+      gi.pos = [ gi.pos[0] + dx, gi.pos[1] + dy ];
+      updateRect(gi.elem, gi);
+    }, function(gi) { // hide
+      if(state !== "drag") return;
+      gi.elem.classed("ghost_cursor", false);
+      gi.elem.attr({
+        "opacity": 0
+      });
+    });
+
+    function move(gi, fs, fo, ts, to) {
+      if(state !== "drag") return;
+      if(fo.id() in dragGroup) {
+        // elements in dragGroup are already in bottom
+        var origin = fo.pos();
+        var delta = [ gi.pos[0] - origin[0], gi.pos[1] - origin[1] ];
+        Object.keys(dragGroup).forEach(function(pid) {
+          var p = dragGroup[pid];
+          var old = p.pos();
+          p.pos([ old[0] + delta[0], old[1] + delta[1] ]);
+        });
+      } else {
+        fo.select(bottom);
+        fo.pos(gi.pos);
+      }
+      updateList();
+    }
+
+    var src_plot = new dnd.Source(gi_plot);
+    var tgt_svg  = new dnd.Target(src_plot, move);
+    var tgt_plot = new dnd.Target(src_plot, move);
+
+    var svg_template = new dnd.Template();
+    tgt_svg.register(svg_template);
+    svg_template.apply(bottom);
+
+    plot_template = new dnd.Template();
+    src_plot.register(plot_template);
+    tgt_plot.register(plot_template);
+
+    var groups = [];
+    var curLasso = null;
+
+    function createLasso() {
+      curLasso = bottom.append("path").attr({
+        "stroke": "blue",
+        "fill": "cornflowerblue",
+        "opacity": 0.5
+      });
+    }
+
+    function freezeLasso() {
+      curLasso.attr({
+        "stroke": "lightgray",
+        "fill": "none"
+      });
+    }
+
+    function resetLasso() {
+      curLasso.attr({
+        "stroke": "blue",
+        "fill": "cornflowerblue",
+        "opacity": 0
+      });
+    }
+
+    var whenDone = null;
+    var gid = 0;
+    function setupLasso() {
+      content.classed("lasso_cursor", true);
+
+      var lasso = new jkjs.Lasso(content);
+      lasso.objProvider(function() {
+        var res = [];
+        bottom.selectAll(".plot").each(function(p) {
+          res.push(p);
+        });
+        return res;
+      });
+      lasso.objToPos(function(p) {
+        return [
+          p.pos()[0],
+          p.pos()[1],
+          size,
+          size
+        ];
+      });
+      lasso.objInPolygon(lasso.rectInPolygon);
+
+      createLasso();
+      lasso.updateSel(function(selection, polygon) {
+        if(isGrabbing) {
+          dragHandle();
+          return;
+        }
+        var path = new jkjs.Path();
+        path.addPoly(polygon);
+        if(polygon.length) {
+          curLasso.attr({
+            "d": path,
+            "opacity": 0.5
+          });
+          d3.selectAll(".rect_selected").classed("rect_selected", false);
+          selection.forEach(function(p) {
+            p.makeSelected();
+          });
+        } else { // finalize
+          freezeLasso();
+          if(whenDone) {
+            whenDone(selection);
+          } else {
+            d3.selectAll(".rect_selected").classed("rect_selected", false);
+            resetLasso();
+          }
+        }
+      });
+    }
+
+    var dragGroup = {};
+    function setupDragLasso() {
+      whenDone = function(selection) {
+        dragGroup = {};
+        d3.selectAll(".rect_selected").classed("rect_selected", false);
+        resetLasso();
+        selection.forEach(function(p) {
+          dragGroup[p.id()] = p;
+          p.makeSelected();
+        });
+      };
+    }
+
+    function setupGroupLasso() {
+      d3.select("#done").text("Finish!");
+      bottom.selectAll(".plot>rect").classed("rect_active", true);
+      whenDone = function(selection) {
+        if(!selection.length) {
+          resetLasso();
+        } else {
+          var midPoint = selection.reduce(function(cur, p) {
+            var v = p.pos();
+            return [ cur[0] + v[0] + size * 0.5, cur[1] + v[1] + size * 0.5 ];
+          }, [ 0, 0 ]);
+          midPoint = [ midPoint[0] / selection.length, midPoint[1] / selection.length ];
+          var curGid = gid;
+          gid += 1;
+          var defaultName = "Group " + curGid;
+          var name = window.prompt("Please enter a name for the created group:", defaultName);
+          if(name && name.trim() != "") {
+            var g = {
+              "gid": curGid,
+              "elements": selection.slice(),
+              "name": name.trim()
+            };
+            groups.push(g);
+            var lassoSel = curLasso;
+            var txt = bottom.append("text").attr({
+              "x": midPoint[0],
+              "y": midPoint[1],
+              "text-anchor": "middle",
+              "stroke": "gray"
+            }).style({
+              "cursor": "pointer"
+            }).text(g["name"]).on("click", function() {
+              var newName = window.prompt("Please enter a new name for the group:", g["name"]);
+              if(newName === null) return;
+              if(newName.trim() == "") {
+                lassoSel && lassoSel.remove();
+                lassoSel = null;
+                txt.remove();
+                groups = groups.filter(function(v) {
+                  return v["gid"] !== g["gid"];
+                });
+              } else {
+                g["name"] = newName.trim();
+                txt.text(g["name"]);
+              }
+            }).on("mouseenter", function() {
+              d3.selectAll(".rect_selected").classed("rect_selected", false);
+              g["elements"].forEach(function(p) {
+                p.makeSelected();
+              });
+            }).on("mouseleave", function() {
+              d3.selectAll(".rect_selected").classed("rect_selected", false);
+            });
+            selection.forEach(function(p) {
+              p.makeInactive();
+            });
+            lassoSel && lassoSel.remove();lassoSel = null; // remove to re-add outlines
+            createLasso();
+          } else {
+            resetLasso();
+          }
+        }
+        d3.selectAll(".rect_selected").classed("rect_selected", false);
+      };
+    }
+
+    setupLasso();
+    setupDragLasso();
+    var state = "drag";
+    d3.select("#done").on("click", function() {
+      if(state === "drag") {
+        if(!topList.selectAll(".plot").empty()) {
+          return;
+        }
+        setStatus("Please circle all clusters and name them.");
+        d3.selectAll(".plot_cursor").classed("plot_cursor", false);
+        topGrabHandle.remove();
+        topGrabHandle = null;
+        state = "lasso";
+        setupGroupLasso();
+      } else if(state === "lasso") {
+        var res = groups.map(function(g) {
+          return {
+            "name": g["name"],
+            "plots": g["elements"].map(function(p) {
+              return {
+                "id": p.id(),
+                "pos": p.pos()
+              };
+            })
+          };
+        });
+        var post = JSON.stringify({
+          'groups': res,
+          'uid': uid
+        });
+        d3.json("/api/result/").header("Content-Type", "application/json").post(post, function(err, data) {
+          if(err) {
+            console.warn(err);
+            return;
+          }
+          setStatus("Done!");
+          state = "done";
+          d3.select("#done").attr({
+            "disabled": "disabled"
+          });
+        });
+      }
+    });
+  } // init()
+
+  d3.json('/api/images', function(err, data) {
+    if(err) {
+      console.warn(err);
+      return;
+    }
+    var imgs = data['images'];
+    if(debug) {
+      imgs.length = 5;
+    }
+    plotCount = imgs.length;
+    init(imgs);
+  });
+
+  window.addEventListener("beforeunload", function (e) {
+    var confirmationMessage = "Are you sure you want to leave the page?";
+    e.returnValue = confirmationMessage;
+    return confirmationMessage;
+  });
+} // start()
+</script>
+
+</body>
+</html>

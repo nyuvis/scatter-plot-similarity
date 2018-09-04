@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>jk-js - Examples</title>
+    <meta charset="utf-8">
+    <link rel="stylesheet" type="text/css" href="lib/bootstrap/css/bootstrap.min.css">
+    <script src="lib/d3/d3.min.js" charset="utf-8"></script>
+    <script src="lib/jquery/jquery.min.js" charset="utf-8"></script>
+    <script src="lib/bootstrap/js/bootstrap.min.js" charset="utf-8"></script>
+    <script src="jkjs/path.js" charset="utf-8"></script>
+    <script src="jkjs/effects.js" charset="utf-8"></script>
+    <script src="jkjs/text.js" charset="utf-8"></script>
+    <script src="jkjs/busy.js" charset="utf-8"></script>
+    <script src="jkjs/zui.js" charset="utf-8"></script>
+    <script src="jkjs/dialog.js" charset="utf-8"></script>
+    <script src="jkjs/lasso.js" charset="utf-8"></script>
+    <style type="text/css">
+        .centeredBlock {
+            display: block;
+            margin: 0 auto;
+        }
+    </style>
+</head>
+<body onload="start()">
+    <div class="container">
+        <div class="row">
+            <div id="content" class="col-md-9" role="main"></div>
+            <div class="col-md-3">
+                <div class="hidden-print hidden-xs hidden-sm affix" role="complementary">
+                    <ul id="navigation" class="nav"></ul>
+                </div>
+            </div>
+        </div>
+    </div>
+<script>
+function filterExample(sel) {
+    var w = 100;
+    var h = 50;
+    var cix = 0;
+    var colors = [ null,  "white", "crimson", "cornflowerblue" ];
+    var svgFilter = sel.append("svg").style({
+        "width": w+"px",
+        "height": h+"px"
+    }).on("click", function() {
+        cix = (cix + 1) % colors.length;
+        rect.style({
+            "fill": colors[cix]
+        });
+    }).classed("centeredBlock", true);
+    var rect = svgFilter.append("rect").attr({
+        "x": 0,
+        "y": 0,
+        "width": w,
+        "height": h
+    });
+    svgFilter.append("text").attr({
+        "x": w * 0.5,
+        "y": (h + 10) * 0.5,
+        "filter": jkjs.effects.getBlurFilter(svgFilter, 6)
+    }).style({
+        "text-anchor": "middle",
+        "fill": "black",
+        "-moz-user-select": "none",
+        "-webkit-user-select": "none",
+        "-ms-user-select": "none",
+        "user-select": "none"
+    }).text("Click Me!");
+    svgFilter.append("rect").attr({
+        "x": 0,
+        "y": 0,
+        "width": w,
+        "height": h
+    }).style({
+        "fill": "none",
+        "stroke": "black"
+    });
+}
+
+function patternExample(sel) {
+    var w = 100;
+    var h = 50;
+    var coolness = false;
+    var svgPattern = sel.append("svg").style({
+        "width": w+"px",
+        "height": h+"px"
+    }).on("click", function() {
+        coolness = !coolness;
+        pathSel.attr({
+            "filter": coolness ? jkjs.effects.getBlurFilter(svgPattern, 2) : null
+        });
+    }).classed("centeredBlock", true);
+    var path = new jkjs.Path();
+    var htap = new jkjs.Path();
+    var pos = 0;
+    path.move(0, 20);
+    var delta = 10;
+    var y1 = 10;
+    var y2 = 20;
+    var y3 = 30;
+    var y4 = 40;
+    while(pos < w + delta) {
+        htap.quad(pos - delta, y4, pos - delta, y3);
+        pos += delta;
+        htap.quad(pos, y4, pos - delta, y4);
+        path.quad(pos - delta, y1, pos, y1);
+        pos += delta;
+        path.quad(pos, y1, pos, y2);
+    }
+    path.add(htap.reverse());
+    path.close();
+    var pathSel = svgPattern.append("path").attr({
+        "d": path,
+        "stroke": "black",
+        "fill": jkjs.effects.getStripePattern(svgPattern, d3.rgb("crimson"), 23)
+    });
+    svgPattern.append("rect").attr({
+        "x": 0,
+        "y": 0,
+        "width": w,
+        "height": h
+    }).style({
+        "fill": "none",
+        "stroke": "black"
+    });
+}
+
+function textWrapExample(sel) {
+    var w = 500;
+    var h = 250;
+    var longText = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, "
+                 + "sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. "
+                 + "Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris "
+                 + "nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in "
+                 + "reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla "
+                 + "pariatur. Excepteur sint occaecat cupidatat non proident, sunt in "
+                 + "culpa qui officia deserunt mollit anim id est laborum.";
+    var shortText = "This is a short text.";
+    var splitX = w * 0.6;
+    var splitY = h;
+    var clamp = function(val, hor) {
+        return Math.min(Math.max(val, 0), hor ? w : h);
+    };
+    var updatePos = function() {
+        var pos = d3.mouse(svgText.node());
+        splitX = clamp(pos[0], true);
+        splitY = clamp(pos[1], false);
+        updateText();
+    };
+    var svgText = sel.append("svg").classed("centeredBlock", true).style({
+        width: w + "px",
+        height: h + "px"
+    }).on("mousemove", updatePos).on("mouseout", updatePos);
+    var rectFull = svgText.append("rect").style({
+        "fill": "none",
+        "stroke": "black"
+    }).attr({
+        x: 0,
+        y: 0,
+        width: w,
+        height: h
+    });
+    var txtLeft = svgText.append("text");
+    var rectLeft = svgText.append("rect").style({
+        "fill": "none",
+        "stroke": "black"
+    });
+    var txtRight = svgText.append("text");
+    var rectRight = svgText.append("rect").style({
+        "fill": "none",
+        "stroke": "black"
+    });
+    var updateText = function() {
+        var boxL = {
+            x: 0,
+            y: 0,
+            width: splitX,
+            height: splitY
+        };
+        jkjs.text.display(txtLeft, longText, boxL, true);
+        rectLeft.attr(boxL);
+        var boxR = {
+            x: splitX,
+            y: 0,
+            width: w - splitX,
+            height: splitY
+        };
+        jkjs.text.display(txtRight, shortText, boxR, false, jkjs.text.align.right);
+        rectRight.attr(boxR);
+    };
+    updateText();
+}
+
+function busyZUIExample(sel) {
+    var div = sel.append("div").style({
+        "display": "flex",
+        "align-items": "center",
+        "justify-content": "center"
+    });
+    var w = 200;
+    var h = 100;
+    // ZUI
+    var zui = jkjs.zui.create(div, {
+        width: w + "px",
+        height: h + "px"
+    }, {
+        width: w,
+        height: h
+    }, function() {
+        return box;
+    }, jkjs.zui.applyCanvasZoom);
+    var box = {
+        x: 20,
+        y: 10,
+        width: 60,
+        height: 40
+    };
+    var inner = zui.inner;
+    inner.append("circle").attr({
+        "cx": 30,
+        "cy": 20,
+        "r": 10
+    }).style({
+        "fill": "cornflowerblue",
+        "stroke": "black"
+    });
+    inner.append("rect").attr({
+        "x": 60,
+        "y": 30,
+        "width": 20,
+        "height": 20
+    }).style({
+        "fill": "crimson",
+        "stroke": "black"
+    });
+    zui.svg.append("rect").attr({
+        "x": 0,
+        "y": 0,
+        "width": w,
+        "height": h
+    }).style({
+        "fill": "none",
+        "stroke": "black"
+    });
+    zui.showAll(false);
+    // busy
+    var busy = new jkjs.busy.layer(zui.svg, {
+        x: 0,
+        y: 0,
+        width: w,
+        height: h
+    });
+    var btnClass = {
+        "btn": true,
+        "btn-default": true
+    };
+    var btnAttr = {
+        "type": "button"
+    };
+
+    function onClick(state, btn) {
+        return function() {
+            busy.setState(state);
+            btnNorm.classed("active", btnNorm === btn);
+            btnBusy.classed("active", btnBusy === btn);
+            btnWarn.classed("active", btnWarn === btn);
+        }
+    }
+
+    var btns = div.append("div").classed({
+        "btn-group-vertical": true,
+        "btn-group-sm": true
+    }).style({
+        "margin": "5px"
+    });
+    var btnNorm = btns.append("button").text("normal").attr(btnAttr).classed("active", true);
+    btnNorm.classed(btnClass).on("click", onClick(jkjs.busy.state.norm, btnNorm));
+    var btnBusy = btns.append("button").text("busy").attr(btnAttr);
+    btnBusy.classed(btnClass).on("click", onClick(jkjs.busy.state.busy, btnBusy));
+    var btnWarn = btns.append("button").text("warning").attr(btnAttr);
+    btnWarn.classed(btnClass).on("click", onClick(jkjs.busy.state.warn, btnWarn));
+}
+
+function inputExample(sel) {
+    // requires jQuery and bootstrap.js
+    var w = 100;
+    var h = 50;
+    var zui = jkjs.zui.create(sel, {
+        width: w + "px",
+        height: h + "px"
+    }, {
+        width: w,
+        height: h
+    }, function() {
+        return {
+            x: 0,
+            y: 0,
+            width: 20,
+            height: 20
+        };
+    }, jkjs.zui.applyCanvasZoom);
+    zui.svg.classed("centeredBlock", true);
+    var curNum = 3;
+
+    function onClick() {
+        input.show(circle, curNum, function(txt) {
+            var t = txt.trim();
+            var num = parseInt(t);
+            if(num.toString() !== t || num < 0 || num > 10) return null;
+            return num;
+        }, function(num) {
+            curNum = num;
+            text.text(num.toString());
+        });
+    }
+
+    var input = new jkjs.dialog.input("Input a number",
+        "Please put a number between <code>0</code> and <code>10</code> inclusive.");
+    var circle = zui.inner.append("circle").attr({
+        "cx": 10,
+        "cy": 10,
+        "r": 10
+    }).style({
+        "fill": "cornflowerblue",
+        "stroke": "black"
+    }).on("click", onClick);
+    var text = zui.inner.append("text").attr({
+        "x": 10,
+        "y": 15
+    }).style({
+        "text-anchor": "middle",
+        "fill": "black"
+    }).on("click", onClick).text(curNum.toString());
+    zui.svg.append("rect").attr({
+        "x": 0,
+        "y": 0,
+        "width": w,
+        "height": h
+    }).style({
+        "fill": "none",
+        "stroke": "black"
+    });
+    zui.showAll(false);
+}
+
+function lassoExample(sel) {
+    var w = 400;
+    var h = 200;
+    var svg = sel.append("svg").attr({
+        "width": w,
+        "height": h
+    }).style({
+        "width": w + "px",
+        "height": h + "px"
+    }).classed("centeredBlock", true);
+
+    // randomly position circles
+    var radius = 5;
+    var circles = [];
+    circles.length = 15;
+    for(var i = 0;i < circles.length;i += 1) {
+        circles[i] = {
+            x: Math.random() * (w - 2*radius) + radius,
+            y: Math.random() * (h - 2*radius) + radius,
+            name: i,
+            sel: null
+        };
+    }
+    var cs = svg.selectAll("circle").data(circles);
+    cs.exit().remove();
+    cs.enter().append("circle").attr({
+        "cx": function(c) {
+            return c.x;
+        },
+        "cy": function(c) {
+            return c.y;
+        },
+        "r": radius,
+    }).style({
+        "stroke": "black",
+        "fill": "white"
+    });
+    cs.each(function(c) { // link back to d3 selections
+        c.sel = d3.select(this);
+    });
+    var lassoSel = svg.append("path").style({
+        "stroke": "blue",
+        "fill": "cornflowerblue",
+        "opacity": 0.5
+    });
+
+    function doSelect(selection) { // performs the actual selection
+        cs.style({
+            "fill": "white"
+        });
+        selection.forEach(function(c) {
+            c.sel.style({
+                "fill": "cornflowerblue"
+            });
+        });
+    }
+
+    var lasso = new jkjs.Lasso(svg);
+    lasso.objProvider(function() {
+        return circles;
+    });
+    lasso.objToPos(function(c) {
+        return [ c.x, c.y ];
+    });
+    lasso.updateSel(function(selection, polygon) {
+        var path = new jkjs.Path(); // update the lasso
+        path.addPoly(polygon);
+        lassoSel.attr({
+            "d": path
+        });
+        if(!polygon.length) { // end of lasso selection
+            doSelect(selection);
+        } else { // temporarily select circles
+            cs.style({
+                "fill": "white"
+            });
+            selection.forEach(function(c) {
+                c.sel.style({
+                    "fill": "crimson"
+                });
+            });
+        }
+    });
+    lasso.onClick(function(pos) {
+        var minDistSq = Number.POSITIVE_INFINITY;
+        var closest = null;
+        circles.forEach(function(c) {
+            var dx = pos[0] - c.x;
+            var dy = pos[1] - c.y;
+            var distSq = dx*dx + dy*dy;
+            if(distSq < minDistSq) {
+                minDistSq = distSq;
+                closest = c;
+            }
+        });
+        closest && doSelect([ closest ]);
+    });
+
+    svg.append("rect").attr({
+        "x": 0,
+        "y": 0,
+        "width": w,
+        "height": h
+    }).style({
+        "fill": "none",
+        "stroke": "black"
+    });
+}
+
+function start() {
+    function addExample(id, title, example, help) {
+        var sel = d3.select("#content").append("div").attr({
+            "id": id
+        });
+        sel.append("h3").text(title);
+        help && sel.append("p").text(help);
+        var panel = sel.append("div").classed({
+            "panel": true,
+            "panel-default": true
+        });
+        var body = panel.append("div").classed("panel-body", true).style({
+            "position": "relative"
+        });
+        example(body);
+        var code = null;
+        body.append("span").classed({
+            "btn": true,
+            "btn-xs": true
+        }).style({
+            "position": "absolute",
+            "right": 0,
+            "bottom": 0
+        }).text("View Source").on("click", function() {
+            if(code) {
+                code.remove();
+                code = null;
+                return;
+            }
+            code = panel.append("div").classed("panel-footer", true);
+            code.append("pre").append("code").text(example.toString());
+        });
+        var li = d3.select("#navigation").append("li");
+        li.append("a").attr({
+            "href": "#" + id
+        }).text(title);
+    }
+
+    addExample("exampleFilter", "Blur Filter", filterExample,
+        "Blur filters can be used to make text easier to read on different backgrounds. "
+      + "Click on the text to change the background color.");
+    addExample("examplePattern", "Fill Pattern", patternExample,
+        "Stripe patterns fill the given arbitrary shape and adapt to its form.");
+    addExample("exampleText", "Text Flow", textWrapExample,
+        "The text flows and is shortened so that it fits into the given rectangles. "
+      + "Move the mouse to change the size of the rectangles.");
+    addExample("exampleBusyZUI", "ZUI and Busy Layer", busyZUIExample,
+        "The canvas containing the circle and quadrat provides zoom and pan interaction. "
+      + "Double clicking on the canvas zooms to make all objects visible. "
+      + "Clicking on the buttons to the right changes the state of the canvas.");
+    addExample("exampleInput", "Input Dialogs", inputExample,
+        "Clicking on the circle opens an input dialog which determines the shown number. "
+      + "Further help text is shown when clicking on the question mark symbol in the dialog. "
+      + "Note that the canvas also provides zoom and pan interaction.");
+    addExample("exampleLasso", "Lasso Selection", lassoExample,
+        "Dragging the mouse creates a lasso selection. Clicking selects the closest circle.");
+
+    if(location.hash) {
+        var sel = d3.select(location.hash);
+        sel.empty() || sel.node().scrollIntoView(true);
+    }
+}
+</script>
+
+</body>
+</html>

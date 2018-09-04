@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>projection validation</title>
+  <meta charset="utf-8">
+  <link rel="shortcut icon" type="image/x-icon" href="favicon.ico">
+  <link rel="stylesheet" type="text/css" href="lib/jk-js/lib/bootstrap/css/bootstrap.min.css">
+  <script src="lib/jk-js/lib/d3/d3.min.js" charset="utf-8"></script>
+  <script src="lib/jk-js/jkjs/stat.js" charset="utf-8"></script>
+  <script src="lib/jk-js/jkjs/util.js" charset="utf-8"></script>
+  <style>
+    line.plot_line:hover {
+      opacity: 0.5;
+    }
+  </style>
+</head>
+<body onload="start()">
+  <div style="display: flex; justify-content: center; align-items: center; width: 100vw; height: 100vh;">
+    <div id="main"></div>
+  </div>
+<script>
+
+function start() {
+  var args = jkjs.util.getQueryStrings();
+  var uid = "uid" in args ? +args["uid"] : 0;
+  var cur = "cur" in args ? +args["cur"] : 0;
+  var total = 0;
+
+  var duration = 250;
+  var ease = "easeInOutCubic";
+
+  var main = d3.select("#main");
+  var plotSize = 150;
+
+  function answerQuestion(images, choice) {
+    var post = JSON.stringify({
+      'images': images,
+      'choice': choice
+    });
+    d3.json('/api/answer/' + uid + '/' + cur + '/').header("Content-Type", "application/json").post(post, function(err, data) {
+      if(err) {
+        console.warn(err);
+        return;
+      }
+      uid = data['uid'];
+      cur = data['next_cur'];
+      addHistory();
+      render();
+    });
+  }
+
+  function createPlot(svg, image, pos, onClick) {
+    var sel = svg.append("g").attr({
+      "transform": "translate(" + pos[0]*plotSize + " " + pos[1]*plotSize + ")"
+    });
+    sel.append("image").attr({
+      "xlink:href": '/api/images/' + image,
+      "x": 0,
+      "y": 0,
+      "width": plotSize,
+      "height": plotSize
+    }).style({
+      "cursor": onClick ? "pointer" : null
+    }).on("click", onClick);
+    sel.append("rect").attr({
+      "stroke": "black",
+      "stroke-width": 1,
+      "fill": "none",
+      "x": 0,
+      "y": 0,
+      "width": plotSize,
+      "height": plotSize
+    }).style({
+      "cursor": onClick ? "pointer" : null
+    }).on("click", onClick);
+  }
+
+  function createLine(svg, apos, bpos) {
+    svg.append("line").attr({
+      "x1": (apos[0] + 0.5) * plotSize,
+      "y1": (apos[1] + 0.5) * plotSize,
+      "x2": (bpos[0] + 0.5) * plotSize,
+      "y2": (bpos[1] + 0.5) * plotSize,
+      "stroke-width": 30,
+      "stroke": "black"
+    }).style({
+      "cursor": "pointer"
+    }).classed("plot_line", true);
+  }
+
+  function askQuestion() {
+    main.style({
+      "opacity": 0,
+      "text-align": "center"
+    });
+    main.append("h4").text("Please click on the plot most similar to the bottom plot.").classed("quest_title", true);
+    main.append("svg").attr({
+      "width": plotSize * 3,
+      "height": plotSize * 3
+    }).style({
+      "display": "block",
+      "width": plotSize * 3 + "px",
+      "height": plotSize * 3 + "px",
+      "opacity": 0
+    }).classed("quest", true);
+    main.append("span").text("Question " + (cur+1) + " of " + total).classed("quest_footer", true);
+    main.transition().duration(duration).ease(ease).style({
+      "opacity": 0.5
+    });
+    d3.json('/api/question/' + uid + '/' + cur + '/', function(err, data) {
+      if(err) {
+        console.warn(err);
+        return;
+      }
+      uid = +data['uid'];
+      cur = +data['cur'];
+      total = +data['total'];
+      if(cur >= total) {
+        render();
+        return;
+      }
+
+      main.selectAll("span.quest_footer").text("Question " + (cur+1) + " of " + total);
+      var images = data['images'];
+      var svg = main.select("svg.quest");
+      var positions = [ [0, 0], [1, 0], [2, 0], [2, 1], [2, 2], [1, 2], [0, 2], [0, 1] ];
+      var rot = 5 % positions.length;//cur % positions.length;
+
+      function getRot(ix) {
+        var res = rot;
+        while(ix > 0) {
+          if(rot % 2 === ix % 2) {
+            res += 3;
+          } else {
+            res += 2;
+          }
+          ix -= 1;
+        }
+        return res;
+      }
+
+      // images.forEach(function(img, ix) {
+      //   var otherIx = (ix + 1) % images.length;
+      //   var arot = getRot(ix) % positions.length;
+      //   var brot = getRot(otherIx) % positions.length;
+      //   createLine(svg, positions[arot], positions[brot]);
+      // });
+      images.forEach(function(img, ix) {
+        var irot = getRot(ix) % positions.length;
+        createPlot(svg, img, positions[irot], ix !== 0 ? function() { // onClick
+          answerQuestion(images, [ 0, ix ]);
+        } : null);
+      });
+      svg.transition().duration(duration).ease(ease).style({
+        "opacity": 1
+      });
+      main.transition().duration(duration).ease(ease).style({
+        "opacity": 1
+      });
+    });
+  }
+
+  function intro() {
+    main.style({
+      "text-align": "center"
+    });
+    main.append("h4").text("Title of the experiment...");
+    main.append("p").text("Introduction text...");
+    main.append("p").text("More introduction text...");
+    main.append("span").text("Click here to start!").style({
+      "cursor": "pointer",
+      "text-decoration": "underline",
+      "color": "cornflowerblue"
+    }).on("click", function() {
+      d3.json('/api/question', function(err, data) {
+        if(err) {
+          console.warn(err);
+          return;
+        }
+        uid = +data['uid'];
+        cur = +data['cur'];
+        total = +data['total'];
+        addHistory();
+        render();
+      });
+    });
+  }
+
+  function outro() {
+    main.style({
+      "opacity": 1,
+      "text-align": "center"
+    });
+    main.append("h4").text("Thank you!");
+    main.append("p").text("That's it the test is over :)");
+    main.append("p").text("You can close the window now.");
+    main.append("a").text("Bring me somewhere else!").attr({
+      "href": "https://www.reddit.com/"
+    }).style({
+      "color": "cornflowerblue"
+    });
+  }
+
+  var changing = false;
+  function render() {
+    var sel = main.selectAll("*");
+
+    function dispatch() {
+      sel.remove();
+      changing = false;
+      if (total > 0 && cur >= total) {
+        outro();
+      } else if(uid > 0) {
+        askQuestion();
+      } else {
+        intro();
+      }
+    }
+
+    if(changing) {
+      return;
+    }
+    changing = true;
+    if(!sel.empty()) {
+      sel.transition().ease(ease).duration(duration).style({
+        "opacity": 0
+      }).remove();
+      setTimeout(dispatch, duration);
+    } else {
+      dispatch();
+    }
+  }
+  render();
+
+  function addHistory() {
+    var url = jkjs.util.getOwnURL() + "?uid=" + uid + "&cur=" + cur;
+    window.history.pushState({
+      uid: uid,
+      cur: cur
+    }, "", url);
+  }
+
+  window.onpopstate = function(e) {
+    if(e.state) {
+      uid = +e.state.uid || 0;
+      cur = +e.state.cur || 0;
+      render();
+    }
+  };
+}
+</script>
+
+</body>
+</html>
